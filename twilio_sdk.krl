@@ -1,8 +1,8 @@
 ruleset twilio.sdk {
     meta {
         configure using
-            sid = "ACa89e9e019a4e1b6fead6cebf69554ac4"
-            token = "819241029b4de645b093ca825fc1bf6d"
+            sid = meta:rulesetConfig{"sid"}
+            token = meta:rulesetConfig{"token"}
 
         provides 
             sendMessage
