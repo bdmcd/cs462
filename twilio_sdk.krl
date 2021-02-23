@@ -1,10 +1,6 @@
 ruleset twilio.sdk {
     meta {
-        configure using
-            sid = meta:rulesetConfig{"sid"}
-            token = meta:rulesetConfig{"token"}
-
-        provides 
+        provide
             sendMessage
         shares
             messages
@@ -45,19 +41,6 @@ ruleset twilio.sdk {
 
         lastResponse = function() {
             {}.put(ent:lastTimestamp,ent:lastResponse)
-        }
-    }
-
-    rule send_message {
-        select when send sms
-        pre {
-            to = event:attr("to").klog("our passed in number: ")
-            message = event:attr("message").klog("our passed in message: ")
-        }
-        sendMessage(to, message) setting(response)
-        fired {
-            ent:lastResponse := response
-            ent:lastTimestamp := time:now()
         }
     }
 }
