@@ -48,7 +48,7 @@ ruleset wovyn_base {
     rule threshold_violation {
         select when wovyn threshold_violation
         pre {
-            attributes = event:attributes.klog()
+            attributes = event:attrs.klog()
             temp = attributes["temperature"]
         }
 
