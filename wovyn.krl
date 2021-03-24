@@ -48,7 +48,8 @@ ruleset wovyn_base {
     rule threshold_violation {
         select when wovyn threshold_violation
         pre {
-            temp = event:attrs["temperature"].klog()
+            attributes = event:attributes.klog()
+            temp = attributes["temperature"]
         }
 
         twilio:sendMessage("8017178175", "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
