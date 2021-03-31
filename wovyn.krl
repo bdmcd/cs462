@@ -36,12 +36,13 @@ ruleset wovyn_base {
         select when wovyn new_temperature_reading
         pre {
             tempData = event:attrs["temperature"][0]
-            tempF = tempData["temperatureF"]
+            timestamp = event:attrs{"timestamp"}
         }
         always {
             raise wovyn event "threshold_violation" attributes {
-                "temperature": tempF,
-            } if (tempF > temperature_threshold);
+                "temperature": tempData,
+                "timestamp": timestamp
+            } if (tempData["temperatureF"] > temperature_threshold);
         }
     }
 
@@ -49,7 +50,8 @@ ruleset wovyn_base {
         select when wovyn threshold_violation
         pre {
             attributes = event:attrs.klog()
-            temp = attributes["temperature"]
+            tempData = attributes["temperature"]
+            temp = tempData["temperatureF"]
         }
 
         twilio:sendMessage("8017178175", "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
