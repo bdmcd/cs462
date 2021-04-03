@@ -3,10 +3,19 @@ ruleset wovyn_base {
         use module twilio.sdk alias twilio with
             sid = meta:rulesetConfig{"sid"}
             token = meta:rulesetConfig{"token"}
+
+        shares getProfile
     }
 
     global {
-        temperature_threshold = 80
+        temperature_threshold = ent:threshold.defaultsTo(80)
+
+        getProfile = function() {
+            return {
+                "threshold": ent:threshold,
+                "number": ent:number
+            }
+        }
     }
 
     rule process_heartbeat {
@@ -38,6 +47,7 @@ ruleset wovyn_base {
             tempData = event:attrs["temperature"][0]
             timestamp = event:attrs{"timestamp"}
         }
+        send_directive("number", { "number": ent:threshold.defaultsTo(80) })
         always {
             raise wovyn event "threshold_violation" attributes {
                 "temperature": tempData,
@@ -54,6 +64,7 @@ ruleset wovyn_base {
             temp = tempData["temperatureF"]
         }
 
-        twilio:sendMessage("8017178175", "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
+        send_directive("test", { "number": ent:number.defaultsTo("") })
+        // twilio:sendMessage(number, "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
     }
 }
