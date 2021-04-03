@@ -1,6 +1,7 @@
 ruleset sensor_profile {
     meta {
         shares getProfile
+        provide getProfile
     }
     global {
         getProfile = function() {

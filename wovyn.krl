@@ -3,19 +3,11 @@ ruleset wovyn_base {
         use module twilio.sdk alias twilio with
             sid = meta:rulesetConfig{"sid"}
             token = meta:rulesetConfig{"token"}
-
-        shares getProfile
+        use module sensor_profile alias profile
     }
 
     global {
-        temperature_threshold = ent:threshold.defaultsTo(80)
 
-        getProfile = function() {
-            return {
-                "threshold": ent:threshold,
-                "number": ent:number
-            }
-        }
     }
 
     rule process_heartbeat {
@@ -23,8 +15,12 @@ ruleset wovyn_base {
         pre {
             attributes = event:attrs.klog("")
             generic_thing = attributes["genericThing"]
+            profileData = profile:getProfile()
         }
         always {
+            ent:profile_threshold := profileData{"threshold"}.defaultsTo("")
+            ent:profile_number := profileData{"number"}.defaultsTo(80)
+
             raise wovyn event "new_temperature_reading" attributes {
                 "temperature": generic_thing["data"]["temperature"],
                 "timestamp": time:now()
@@ -47,12 +43,11 @@ ruleset wovyn_base {
             tempData = event:attrs["temperature"][0]
             timestamp = event:attrs{"timestamp"}
         }
-        send_directive("number", { "number": ent:threshold.defaultsTo(80) })
         always {
             raise wovyn event "threshold_violation" attributes {
                 "temperature": tempData,
                 "timestamp": timestamp
-            } if (tempData["temperatureF"] > temperature_threshold);
+            } if (tempData["temperatureF"] > ent:profile_threshold);
         }
     }
 
@@ -64,7 +59,6 @@ ruleset wovyn_base {
             temp = tempData["temperatureF"]
         }
 
-        send_directive("test", { "number": ent:number.defaultsTo("") })
-        // twilio:sendMessage(number, "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
+        twilio:sendMessage(ent:profile_number, "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
     }
 }
