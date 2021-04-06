@@ -1,5 +1,8 @@
 ruleset twilio.sdk {
     meta {
+        configure using
+            sid = meta:rulesetConfig{"sid"}
+            token = meta:rulesetConfig{"token"}
         provide
             sendMessage
         shares
