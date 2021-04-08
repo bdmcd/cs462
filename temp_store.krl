@@ -39,7 +39,6 @@ ruleset temperature_store {
             temp = event:attrs{"temperature"}
             time = event:attrs{"timestamp"}
         }
-        send_directive("asdfasdf", temp)
         always {
             ent:violations := ent:violations.defaultsTo([]).append({"temperature": temp, "timestamp": time})
         }

@@ -3,6 +3,7 @@ ruleset sensor_initialize {
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subs
         shares subscriptionTx, sensorId
+        provide subscriptionTx, sensorId
     }
 
     global {
@@ -57,16 +58,20 @@ ruleset sensor_initialize {
         }
     }
 
-    rule save_tx_info {
-        select when wrangler subscription_added
+    rule save_subscription_info {
+        select when sensor subscription_added
         event:send({
-            "eci": wrangler:parent_eci(),
+            "eci": event:attrs{"Tx"},
             "domain": "sensor", 
             "type": "subscription_accepted",
             "attrs":{
-                "sensor_id": ent:sensor_id, //TODO: change this
-                "tx": event:attrs{"Rx"}
+                "sensor_id": ent:sensor_id,
+                "Rx": event:attrs{"Tx"},
+                "Tx": event:attrs{"Rx"},
             }
         })
+        always {
+            ent:subscriptionTx := event:attrs{"Tx"}
+        }
     }
 }

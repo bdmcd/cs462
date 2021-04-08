@@ -1,9 +1,9 @@
 ruleset wovyn_base {
     meta {
-        use module twilio.sdk alias twilio with
-            sid = meta:rulesetConfig{"sid"}
-            token = meta:rulesetConfig{"token"}
+        use module io.picolabs.wrangler alias wrangler
+        use module io.picolabs.subscription alias subs
         use module sensor_profile alias profile
+        use module sensor_initialize alias sensor
     }
 
     global {
@@ -54,11 +54,18 @@ ruleset wovyn_base {
     rule threshold_violation {
         select when wovyn threshold_violation
         pre {
-            attributes = event:attrs.klog()
-            tempData = attributes["temperature"]
+            tempData = event:attrs{"temperature"}
             temp = tempData["temperatureF"]
         }
 
-        twilio:sendMessage(ent:profile_number, "Temperature threshold violation, temperature: " + temp + " degrees farenheit") setting(response)
+        send_directive({
+            "eci": sensor:subscriptionTx(),
+            "domain":"sensor", 
+            "type":"child_threshold_violation",
+            "attrs":{
+                "temp": temp,
+                "sensor_id": sensor:sensorId()
+            }
+        })
     }
 }

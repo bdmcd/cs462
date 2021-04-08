@@ -7,7 +7,7 @@ ruleset manage_sensors {
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subs
 
-        shares showSubs, sensors, temperatures
+        shares showSubs, sensors, temperatures,testData
     }
 
     global {
@@ -20,15 +20,14 @@ ruleset manage_sensors {
                 sub["Rx_role"] == "collection" && sub["Tx_role"] == "sensor"
             })
         }
-
         sensors = function() {
             ent:sensors
         }
 
         temperatures = function() {
             ent:sensors.keys().map(function(sensor_id) {
-                eci = ent:sensors{sensor_id}{"eci"}
-                response = wrangler:picoQuery(eci, "temperature_store", "temperatures", {});
+                tx = ent:sensors{sensor_id}{"tx"}
+                response = wrangler:picoQuery(tx, "temperature_store", "temperatures", {});
                 {}.put(sensor_id, response)
             })
         }
@@ -154,7 +153,28 @@ ruleset manage_sensors {
     rule save_sensor_subscription_info {
         select when sensor subscription_accepted
         always {
-            ent:sensors{[event:attrs{"sensor_id"}, "tx"]} := event:attrs{"tx"}
+            ent:sensors{[event:attrs{"sensor_id"}, "rx"]} := event:attrs{"rx"}
+        }
+    }
+
+    rule send_added_status {
+        select when wrangler subscription_added
+        event:send({
+            "eci": event:attrs{"Tx"},
+            "domain": "sensor", 
+            "type": "subscription_added",
+            "attrs":{
+                "Rx": event:attrs{"Tx"},
+                "Tx": event:attrs{"Rx"},
+            }
+        })
+    }
+
+    rule save_subscription_info {
+        select when sensor subscription_accepted
+        always {
+            ent:sensors{[event:attrs{"sensor_id"}, "rx"]} := event:attrs{"Rx"}
+            ent:sensors{[event:attrs{"sensor_id"}, "tx"]} := event:attrs{"Tx"}
         }
     }
 
