@@ -1,7 +1,12 @@
 ruleset manage_sensors {
     meta {
+        use module twilio.sdk alias twilio with
+            sid = meta:rulesetConfig{"sid"}
+            token = meta:rulesetConfig{"token"}
+
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subs
+
         shares showSubs, sensors, temperatures
     }
 
@@ -68,7 +73,7 @@ ruleset manage_sensors {
                     "attrs": {
                         "absoluteURL": meta:rulesetURI,
                         "rid": rid,
-                        "config": {"sid":"ACa89e9e019a4e1b6fead6cebf69554ac4","token":"819241029b4de645b093ca825fc1bf6d"},
+                        "confi": {},
                         "sensor_id": sensor_id
                     }
                 }
@@ -150,6 +155,17 @@ ruleset manage_sensors {
         select when sensor subscription_accepted
         always {
             ent:sensors{[event:attrs{"sensor_id"}, "tx"]} := event:attrs{"tx"}
+        }
+    }
+
+    rule send_sensor_violations {
+        select when sensor child_threshold_violation
+        always {
+            raise twilio event "sendMessage"
+                attributes {
+                    "to": "8017178175",
+                    "message": event:attrs{"sensor_id"} + ": temperature threshold violation, (" + event:attrs{"temp"} + " degrees farenheit)"
+                }   
         }
     }
 }
