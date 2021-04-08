@@ -44,6 +44,19 @@ ruleset sensor_initialize {
         }
     }
 
+    rule subscribe_to_external_collection {
+        select when sensor subscribe_to_collection
+        event:send({
+            "eci": event:attrs{"collection_eci"},
+            "domain":"sensor", 
+            "type":"init_subscription",
+            "attrs":{
+                "sensor_id": ent:sensor_id,
+                "wellKnown_Tx": subs:wellKnown_Rx(){"id"}
+            }
+        })
+    }
+
     rule auto_accept_subscription {
         select when wrangler new_subscription_request
         if event:attrs{"Rx_role"}=="sensor" && event:attrs{"Tx_role"}=="collection" 

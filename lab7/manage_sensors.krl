@@ -85,22 +85,17 @@ ruleset manage_sensors {
 
     rule add_external_sensor {
         select when sensor add_external
-        foreach ["sensor_initialize", "twilio_sdk", "sensor_profile", "wovyn", "temp_store"] setting(rid, i)
         pre {
-            sensor_eci = event:attrs{"eci"}
-            sensor_id = event:attrs{"sensor_id"}
+            sensor_eci = event:attrs{"sensor_eci"}
+            collection_eci = event:attrs{"collection_eci"}
         }
         event:send(
             { 
                 "eci": sensor_eci,
-                "eid": "install-ruleset",
-                "domain": "wrangler", 
-                "type": "install_ruleset_request",
+                "domain": "sensor", 
+                "type": "subscribe_to_collection",
                 "attrs": {
-                    "absoluteURL": meta:rulesetURI,
-                    "rid": rid,
-                    "sender_tx": wrangler:myself(){"eci"},
-                    "sensor_id": sensor_id
+                    "collection_eci": collection_eci,
                 }
             }
         )
