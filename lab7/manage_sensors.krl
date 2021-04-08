@@ -7,7 +7,7 @@ ruleset manage_sensors {
         use module io.picolabs.wrangler alias wrangler
         use module io.picolabs.subscription alias subs
 
-        shares showSubs, sensors, temperatures,testData
+        shares showSubs, sensors, temperatures
     }
 
     global {
@@ -25,11 +25,15 @@ ruleset manage_sensors {
         }
 
         temperatures = function() {
-            ent:sensors.keys().map(function(sensor_id) {
-                tx = ent:sensors{sensor_id}{"tx"}
-                response = wrangler:picoQuery(tx, "temperature_store", "temperatures", {});
-                {}.put(sensor_id, response)
+            ent:sensors.map(function(value, key) {
+                wrangler:picoQuery(value{"tx"}, "temperature_store", "temperatures", {});
+                // value
             })
+            // ent:sensors.keys().map(function(sensor_id) {
+            //     tx = ent:sensors{sensor_id}{"tx"}
+            //     response = wrangler:picoQuery(tx, "temperature_store", "temperatures", {});
+            //     {}.put(sensor_id, response)
+            // })
         }
     }
 
