@@ -51,7 +51,7 @@ ruleset manage_sensors {
 
     rule store_new_sensor {
         select when wrangler new_child_created
-        foreach ["twilio_sdk", "sensor_profile", "wovyn", "temp_store", "io.picolabs.wovyn.emitter"] setting(rid, i)
+        foreach ["twilio_sdk", "sensor_profile", "wovyn", "temp_store"] setting(rid, i)
         pre {
             the_sensor = {"eci": event:attr("eci")}
             sensor_id = event:attr("sensor_id")
