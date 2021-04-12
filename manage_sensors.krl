@@ -25,15 +25,66 @@ ruleset manage_sensors {
         }
 
         temperatures = function() {
-            ent:sensors.map(function(value, key) {
-                wrangler:picoQuery(value{"tx"}, "temperature_store", "temperatures", {});
-                // value
+            temps = ent:temperatures.defaultsTo({}).keys().reverse().slice(4).map(function(key) {
+                {}.put(key, ent:temperatures{key})
             })
-            // ent:sensors.keys().map(function(sensor_id) {
-            //     tx = ent:sensors{sensor_id}{"tx"}
-            //     response = wrangler:picoQuery(tx, "temperature_store", "temperatures", {});
-            //     {}.put(sensor_id, response)
-            // })
+            temps
+        }
+    }
+
+    rule start_collect_temperatures {
+        select when manager start_collect_temperatures
+        always {
+            raise manager event "send_collect_temperatures"
+                attributes {
+                    "correlation_id": time:now()
+                }
+        }
+    }
+
+    rule send_collect_temperatures {
+        select when manager send_collect_temperatures
+        foreach ent:sensors setting(sensor, sensorId)
+        pre {
+            sensor_eci = sensor{"tx"}
+            collection_eci = sensor{"rx"}
+            correlation_id = event:attrs{"correlation_id"}
+        }
+        event:send({ 
+            "eci": sensor_eci, 
+            "domain": "sensor", 
+            "type": "collect_sensor_temperature",
+            "attrs": {
+                "correlation_id": correlation_id,
+                "sensor_id": sensorId,
+                "tx": collection_eci,
+                "rx": sensor_eci
+            }
+        })
+    }
+
+    rule collect_temperatures {
+        select when sensor send_temperature
+        pre {
+            correlation_id = event:attrs{"correlation_id"}
+            sensor_id = event:attrs{"sensor_id"}
+            sensor_rx = event:attrs{"sensor_rx"}
+            temperature_reading = event:attrs{"temperature"}
+        }
+        always {
+            ent:temperatures := ent:temperatures.defaultsTo({})
+            ent:temperatures{correlation_id} := ent:temperatures{correlation_id}.defaultsTo([]).append({
+                "sensor_rx": sensor_rx,
+                "sensor_id": sensor_id,
+                "temperature": temperature_reading
+            })
+        }
+    }
+
+    rule clear_temperatures {
+        select when manager clear_temperatures
+        always {
+            clear ent:temperatures
         }
     }
 

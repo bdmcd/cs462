@@ -52,4 +52,27 @@ ruleset temperature_store {
             ent:violations := []
         }
     }
+
+    rule send_temperature_to_collection {
+        select when sensor collect_sensor_temperature
+        pre {
+            readings = ent:readings.defaultsTo([])
+            correlation_id = event:attrs{"correlation_id"}
+            collection_eci = event:attrs{"tx"}
+            sensor_eci = event:attrs{"rx"}
+            sensor_id = event:attrs{"sensor_id"}
+            temperature = readings[readings.length() - 1]{"temperature"}[0]
+        }
+        event:send({ 
+            "eci": collection_eci, 
+            "domain": "sensor", 
+            "type": "send_temperature",
+            "attrs": {
+                "sensor_id": sensor_id,
+                "sensor_rx": sensor_eci,
+                "temperature": temperature,
+                "correlation_id": correlation_id
+            }
+        })
+    }
 }
