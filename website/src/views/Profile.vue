@@ -27,7 +27,7 @@ export default {
   },
   methods: {
     fetchData() {
-      this.$http.get("c/ckly7o89v00076sns4id33w06/query/sensor_profile/getProfile").then((res) => {
+      this.$http.get("c/ckn9gmg1e00f14wnsex7c7jmo/query/sensor_profile/getProfile").then((res) => {
         this.name = res.body.name;
         this.threshold = res.body.threshold;
         this.location = res.body.location;
@@ -35,7 +35,7 @@ export default {
       })
     },
     saveSettings() {
-      this.$http.post("c/ckly7o89v00076sns4id33w06/event-wait/sensor/profile_updated", {
+      this.$http.post("c/ckn9gmg1e00f14wnsex7c7jmo/event-wait/sensor/profile_updated", {
         name: this.name,
         threshold: this.threshold,
         location: this.location,

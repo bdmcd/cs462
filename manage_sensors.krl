@@ -1,7 +1,13 @@
 ruleset manage_sensors {
     meta {
+        use module twilio.sdk alias twilio with
+            sid = meta:rulesetConfig{"sid"}
+            token = meta:rulesetConfig{"token"}
+
         use module io.picolabs.wrangler alias wrangler
-        shares showChildren, sensors, temperatures
+        use module io.picolabs.subscription alias subs
+
+        shares showSubs, sensors, temperatures
     }
 
     global {
@@ -9,20 +15,25 @@ ruleset manage_sensors {
             sensor_id + " Pico"
         }
 
-        showChildren = function() {
-            wrangler:children()
+        showSubs = function() {
+            subs:established().filter(function(sub) {
+                sub["Rx_role"] == "collection" && sub["Tx_role"] == "sensor"
+            })
         }
-
         sensors = function() {
             ent:sensors
         }
 
         temperatures = function() {
-            ent:sensors.keys().map(function(sensor_id) {
-                eci = ent:sensors{sensor_id}{"eci"}
-                response = wrangler:picoQuery(eci, "temperature_store", "temperatures", {});
-                {}.put(sensor_id, response)
+            ent:sensors.map(function(value, key) {
+                wrangler:picoQuery(value{"tx"}, "temperature_store", "temperatures", {});
+                // value
             })
+            // ent:sensors.keys().map(function(sensor_id) {
+            //     tx = ent:sensors{sensor_id}{"tx"}
+            //     response = wrangler:picoQuery(tx, "temperature_store", "temperatures", {});
+            //     {}.put(sensor_id, response)
+            // })
         }
     }
 
@@ -51,7 +62,7 @@ ruleset manage_sensors {
 
     rule store_new_sensor {
         select when wrangler new_child_created
-        foreach ["twilio_sdk", "sensor_profile", "wovyn", "temp_store"] setting(rid, i)
+        foreach ["sensor_initialize", "twilio_sdk", "sensor_profile", "wovyn", "temp_store"] setting(rid, i)
         pre {
             the_sensor = {"eci": event:attr("eci")}
             sensor_id = event:attr("sensor_id")
@@ -65,14 +76,29 @@ ruleset manage_sensors {
                     "attrs": {
                         "absoluteURL": meta:rulesetURI,
                         "rid": rid,
-                        "config": {"sid":"ACa89e9e019a4e1b6fead6cebf69554ac4","token":"819241029b4de645b093ca825fc1bf6d"},
+                        "confi": {},
                         "sensor_id": sensor_id
                     }
                 }
             )
-        fired {
-            ent:sensors{sensor_id} := the_sensor
+    }
+
+    rule add_external_sensor {
+        select when sensor add_external
+        pre {
+            sensor_eci = event:attrs{"sensor_eci"}
+            collection_eci = event:attrs{"collection_eci"}
         }
+        event:send(
+            { 
+                "eci": sensor_eci,
+                "domain": "sensor", 
+                "type": "subscribe_to_collection",
+                "attrs": {
+                    "collection_eci": collection_eci,
+                }
+            }
+        )
     }
 
     rule delete_sensor {
@@ -82,7 +108,7 @@ ruleset manage_sensors {
             exists = ent:sensors >< sensor_id
             eci_to_delete = ent:sensors{[sensor_id,"eci"]}
         }
-            if exists && eci_to_delete then
+        if exists && eci_to_delete then
             send_directive("deleting_sensor", {"sensor_id":sensor_id})
         fired {
             raise wrangler event "child_deletion_request"
@@ -102,7 +128,8 @@ ruleset manage_sensors {
                 { 
                     "eci": the_sensor.get("eci"), 
                     "eid": "init_profile",
-                    "domain": "sensor", "type": "profile_updated",
+                    "domain": "sensor", 
+                    "type": "init",
                     "attrs": {
                         "name": sensor_id,
                         "threshold": 80,
@@ -111,6 +138,9 @@ ruleset manage_sensors {
                     }
                 }
             )
+        fired {
+            ent:sensors{sensor_id} := the_sensor
+        }
     }
 
     rule initialize_sensors {
@@ -121,6 +151,63 @@ ruleset manage_sensors {
                 attributes {
                     "sensor_id": name
                 }
+        }
+    }
+
+    rule make_subscription_to_sensor {
+        select when sensor init_subscription
+        pre {
+            tx = event:attrs{"wellKnown_Tx"}
+            sensor_id = event:attrs{"sensor_id"}
+        }
+        always {
+            raise wrangler event "subscription"
+                attributes {
+                    "wellKnown_Tx": tx,
+                    "Tx_role": "sensor",
+                    "Rx_role": "collection",
+                    "Name": sensor_id,
+                    "channel_type": "sensor_subscription"
+                }
+        }
+    }
+
+    rule save_sensor_subscription_info {
+        select when sensor subscription_accepted
+        always {
+            ent:sensors{[event:attrs{"sensor_id"}, "rx"]} := event:attrs{"rx"}
+        }
+    }
+
+    rule send_added_status {
+        select when wrangler subscription_added
+        event:send({
+            "eci": event:attrs{"Tx"},
+            "domain": "sensor", 
+            "type": "subscription_added",
+            "attrs":{
+                "Rx": event:attrs{"Tx"},
+                "Tx": event:attrs{"Rx"},
+            }
+        })
+    }
+
+    rule save_subscription_info {
+        select when sensor subscription_accepted
+        always {
+            ent:sensors{[event:attrs{"sensor_id"}, "rx"]} := event:attrs{"Rx"}
+            ent:sensors{[event:attrs{"sensor_id"}, "tx"]} := event:attrs{"Tx"}
+        }
+    }
+
+    rule send_sensor_violations {
+        select when sensor child_threshold_violation
+        always {
+            raise twilio event "sendMessage"
+                attributes {
+                    "to": "8017178175",
+                    "message": event:attrs{"sensor_id"} + ": temperature threshold violation, (" + event:attrs{"temp"} + " degrees farenheit)"
+                }   
         }
     }
 }

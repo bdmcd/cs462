@@ -22,13 +22,13 @@ export default {
   methods: {
     fetchTemperature() {
       this.$http
-        .get("c/ckly7o89v00076sns4id33w06/query/temperature_store/temperatures")
+        .get("c/ckn9gmg1e00f14wnsex7c7jmo/query/temperature_store/temperatures")
         .then((res) => {
           this.temperatureData = res.body;
           this.temperatureData.reverse();
           this.$http
             .get(
-              "c/ckly7o89v00076sns4id33w06/query/temperature_store/threshold_violations",
+              "c/ckn9gmg1e00f14wnsex7c7jmo/query/temperature_store/threshold_violations",
               {
                 headers: {},
               }

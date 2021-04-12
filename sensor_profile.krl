@@ -13,6 +13,22 @@ ruleset sensor_profile {
             }
         }
     }
+    
+    rule profile_init {
+        select when sensor init
+        pre {
+            name = event:attr("name")
+            threshold = event:attr("threshold")
+            location = event:attr("location")
+            number = event:attr("number")
+        }
+        always {
+            ent:name := name
+            ent:threshold := threshold
+            ent:location := location
+            ent:number := number
+        }
+    }
 
     rule profile_updated {
         select when sensor profile_updated

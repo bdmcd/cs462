@@ -46,4 +46,21 @@ ruleset twilio.sdk {
             {}.put(ent:lastTimestamp,ent:lastResponse)
         }
     }
+
+    rule sendMessage {
+        select when twilio sendMessage
+        pre {
+            data = {
+                "Body": event:attrs{"message"},
+                "From": "(231) 241-6658",
+                "To": event:attrs{"to"}
+            };
+
+            auth = {
+                "username": sid,
+                "password": token
+            }
+        }
+        http:post(<<#{base_url}/#{sid}/Messages>>, form=data, auth=auth) setting(response)
+    }
 }
