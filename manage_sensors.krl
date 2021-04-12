@@ -34,10 +34,14 @@ ruleset manage_sensors {
 
     rule start_collect_temperatures {
         select when manager start_collect_temperatures
+        pre {
+            correlation_id = time:now()
+        }
         always {
+            ent:temperatures{correlation_id} := {"count": 0, "expected_count": ent:sensors.length()}
             raise manager event "send_collect_temperatures"
                 attributes {
-                    "correlation_id": time:now()
+                    "correlation_id": correlation_id
                 }
         }
     }
@@ -73,11 +77,12 @@ ruleset manage_sensors {
         }
         always {
             ent:temperatures := ent:temperatures.defaultsTo({})
-            ent:temperatures{correlation_id} := ent:temperatures{correlation_id}.defaultsTo([]).append({
+            ent:temperatures{correlation_id} := ent:temperatures{correlation_id}.put("sensor_rx", {
                 "sensor_rx": sensor_rx,
                 "sensor_id": sensor_id,
                 "temperature": temperature_reading
             })
+            ent:temperatures{[correlation_id, "count"]} := ent:temperatures{[correlation_id, "count"]} + 1
         }
     }
 
