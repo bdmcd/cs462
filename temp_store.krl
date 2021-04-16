@@ -30,6 +30,10 @@ ruleset temperature_store {
         }
         always {
             ent:readings := ent:readings.defaultsTo([]).append({"temperature": temp, "timestamp": time})
+            raise gossip event "new_temperature" attributes {
+                "temperature": temp[0]{"temperatureF"},
+                "timestamp": time
+            }
         }
     }
 

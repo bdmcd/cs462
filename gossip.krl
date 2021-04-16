@@ -1,7 +1,7 @@
 ruleset gossip {
     meta {
         use module io.picolabs.subscription alias subscriptions
-        shares originId, sequenceId, messageId, selfState, state, temperatureLogs, subscriptionInfo, getRumorMessage, getSeenMessage
+        shares originId, sequenceId, selfState, state, temperatureLogs, subscriptionInfo, processing
     }
 
     global {
@@ -33,68 +33,105 @@ ruleset gossip {
             ent:subscriberMap
         }
 
-        getPeer = function() {
-            subs = subscriptions:established().map(function(sub) {
-                sub{"Tx"}
-            })
-            peers = subs.map(function(tx) {
-                peerId = ent:subscriberMap{tx}
-                result = {}.put(peerId, ent:state{peerId})
-                result
-            })
-            peersWithNeededInfo = peers.filter(function(peer) {
-                peerState = peer.values()[0]
-                neededStates = peerState.filter(function(sequence, sensor) {
-                    selfState()[sensor] > sequence
-                })
-                neededStates.length() > 0
-            })
-            
-            random = random:integer(peersWithNeededInfo.length() - 1)
-            peersWithNeededInfo[random].keys()[0]
+        processing = function() {
+            ent:processing
         }
 
-        getRumorMessage = function(peer) {
-            peerState = ent:state{peer}
-            needed = selfState().filter(function(sequence, sensor) {
-                peerState[sensor] < sequence
+        getPeersNeededInfo = function() {
+            peers = subscriptions:established().map(function(sub) {
+                tx = sub{"Tx"}
+                peer = ent:subscriberMap{tx}
+                data = {}.put(peer, ent:state{peer})
+                data
+            }).reduce(function(a, b) {
+                a.put(b)
             })
-            random = random:integer(needed.length() - 1)
-            choice = needed.keys()[random]
-            messageId = choice + ":" + selfState()[choice]
-            message = {
-                "messageId": messageId,
+
+            neededInfo = peers.map(function(peerState, peerId) {
+                selfState().defaultsTo({}).map(function(whatIThink, sensorId) {
+                    whatTheyThink = peerState{sensorId} == null => -1 | peerState{sensorId}
+                    whatTheyNeed = whatIThink > whatTheyThink => whatTheyThink + 1 | null
+                    whatTheyNeed
+                }).filter(function(whatTheyNeed, sensorId) {
+                    whatTheyNeed != null && sensorId != peerId
+                })
+            }).filter(function(everythingTheyNeed, sensorId) {
+                everythingTheyNeed.length() > 0
+            })
+            neededInfo
+        }
+
+        getMyNeededInfo = function() {
+            peers = subscriptions:established().map(function(sub) {
+                tx = sub{"Tx"}
+                peer = ent:subscriberMap{tx}
+                peer
+            })
+
+            peers
+        }
+
+        getRumorMessage = function() {
+            peersNeededInfo = getPeersNeededInfo()
+            random = random:integer(peersNeededInfo.length()-1)
+            chosenPeer = peersNeededInfo.keys()[random]
+            whatTheyNeed = peersNeededInfo{chosenPeer}
+            random2 = random:integer(whatTheyNeed.length()-1)
+            selectedSensorIdToSend = whatTheyNeed.keys()[random2]
+            selectedSequenceIdToSend = whatTheyNeed{selectedSensorIdToSend}
+            
+            messageId = selectedSensorIdToSend + ":" + selectedSequenceIdToSend
+            temperatureLog = temperatureLogs(){[selectedSensorIdToSend, messageId]}
+            
+            message = peersNeededInfo.length() > 0 => {
                 "senderId": originId(),
-                "temperature": temperatureLogs(){[choice, messageId, "temperature"]},
-                "timestamp": temperatureLogs(){[choice, messageId, "timestamp"]}
-            }
+                "chosenPeer": chosenPeer,
+                "messageId": messageId,
+                "temperature": temperatureLog{"temperature"},
+                "timestamp": temperatureLog{"timestamp"}
+            } | null
             message
         }
 
-        getSeenMessage = function(peer) {
-            sensors = subscriptions:established().map(function(sub) {
-                ent:subscriberMap{sub{"Tx"}}
-            }).append(originId())
-            random = random:integer(sensors.length() - 1)
-            sensor = sensors[random]
-
-            message = {
+        getSeenMessage = function() {
+            peers = getMyNeededInfo()
+            random = random:integer(peers.length()-1)
+            chosenPeer = peers[random]
+            
+            message = peers.length() > 0 => {
                 "senderId": originId(),
-                "sensorId": sensor,
-                "state": ent:state{sensor}
-            }
+                "chosenPeer": chosenPeer,
+                "state": selfState().defaultsTo({})
+            } | null
             message
         }
     }
 
-    rule init {
-        select when gossip init
+    rule reset {
+        select when gossip reset
         always {
             ent:originId := random:uuid()
             ent:sequenceId := 0
             ent:state := {}
             ent:temperatureLogs := {}
             ent:subscriberMap := {}
+            ent:processing := 1
+        }
+    }
+
+    rule init {
+        select when gossip init
+        fired {
+            ent:state := {}
+            ent:temperatureLogs := {}
+            ent:sequenceId := 0
+        }
+    }
+
+    rule set_processing {
+        select when gossip process
+        fired {
+            ent:processing := event:attrs{"proccess"}.as("Number")
         }
     }
 
@@ -105,6 +142,7 @@ ruleset gossip {
             rx = sub{"Rx"}
             tx = sub{"Tx"}
         }
+        if sub{"Rx_role"} == "node" && sub{"Rx_role"} == "node" then
         event:send({
             "eci": tx, 
             "domain": "gossip", 
@@ -116,32 +154,11 @@ ruleset gossip {
         })
     }
 
-    rule init_state {
-        select when gossip init_state
-        pre {
-            subs = subscriptions:established()
-        }
-        fired {
-            ent:state := subs.map(function(sub) {
-                {}.put(ent:subscriberMap{sub{"Tx"}}, subs.map(function(s) {
-                    {}.put(ent:subscriberMap{s{"Tx"}}, -1)
-                }).reduce(function(a, b) {
-                    a.put(b)
-                }).put(originId(), -1))
-            }).reduce(function(a, b) {
-                a.put(b)
-            }).put(originId(), subs.map(function(s) {
-                {}.put(ent:subscriberMap{s{"Tx"}}, -1)
-            }).reduce(function(a, b) {
-                a.put(b)
-            }).put(originId(), -1))
-        }
-    }
-
     rule start_heartbeat {
         select when gossip start_heartbeat
-        fired {
-            schedule gossip event "heartbeat" repeat "*/5  *  * * * *" setting(heartbeat_id)
+        if ent:heartbeat_id then schedule:remove(ent:heartbeat_id)
+        always {
+            schedule gossip event "heartbeat" repeat "*/" + event:attrs{"seconds"} + "  *  * * * *" setting(heartbeat_id)
             ent:heartbeat_id := heartbeat_id
         }
     }
@@ -151,14 +168,9 @@ ruleset gossip {
         schedule:remove(ent:heartbeat_id)
     }
 
-    rule stop_all_heartbeats {
-        select when gossip stop_all_heartbeats
-        foreach schedule:list() setting(heartbeat)
-        schedule:remove(heartbeat{"id"})
-    }
-
     rule heartbeat {
         select when gossip heartbeat
+            where ent:processing
         pre {
             random = random:integer(1)
             messageType = random == 0 => "rumor" | "seen"
@@ -168,37 +180,49 @@ ruleset gossip {
         }
     }
 
+    rule new_temperature {
+        select when gossip new_temperature
+        always {
+            ent:temperatureLogs{[originId(), messageId(), "messageId"]} := messageId()
+            ent:temperatureLogs{[originId(), messageId(), "temperature"]} := event:attrs{"temperature"}
+            ent:temperatureLogs{[originId(), messageId(), "timestamp"]} := event:attrs{"timestamp"}
+
+            ent:state{[originId(), originId()]} := ent:sequenceId
+            ent:sequenceId := ent:sequenceId + 1
+        }
+    }
+
     rule send_rumor {
         select when gossip send_rumor
+            where ent:processing
         pre {
-            peer = getPeer()
-            message = getRumorMessage(peer)
-            messageInfo = message{"messageId"}.split(":")
-            tx = ent:subscriberMap{peer}
+            message = getRumorMessage()
+            chosenPeer = message{"chosenPeer"}
         }
-        if peer != null then event:send({
-            "eci": tx, 
-            "domain": "gossip", 
+        if message != null then
+        event:send({
+            "eci": ent:subscriberMap{chosenPeer},
+            "domain": "gossip",
             "type": "rumor",
             "attrs": message
         })
-
         fired {
-            ent:state{[peer, messageInfo[0]]} := messageInfo[1].as("Number")
+            messageData = message{"messageId"}.split(":")
+            ent:state{[chosenPeer, messageData[0]]} := messageData[1].as("Number")
         }
     }
 
     rule send_seen {
         select when gossip send_seen
+            where ent:processing
         pre {
-            peer = getPeer()
-            message = getSeenMessage(peer)
-            messageInfo = message{"messageId"}.split(":")
-            tx = ent:subscriberMap{peer}
+            message = getSeenMessage()
+            chosenPeer = message{"chosenPeer"}
         }
-        if peer != null then event:send({
-            "eci": tx, 
-            "domain": "gossip", 
+        if message != null then
+        event:send({
+            "eci": ent:subscriberMap{chosenPeer},
+            "domain": "gossip",
             "type": "seen",
             "attrs": message
         })
@@ -206,56 +230,66 @@ ruleset gossip {
 
     rule recieve_rumor {
         select when gossip rumor
+            where ent:processing
         pre {
             messageId = event:attrs{"messageId"}
             messageData = messageId.split(":")
-            originId = messageData[0]
-            originSequenceId = messageData[1].as("Number")
-            temperature = event:attrs{"temperature"}
-            timestamp = event:attrs{"timestamp"}
+            subjectSensorId = messageData[0]
+            subjectSequenceIdStr = messageData[1]
+            subjectSequenceId = messageData[1].as("Number")
+            myCurrentSequenceId = selfState(){subjectSensorId} == null => -1 | selfState(){subjectSensorId}
 
             senderId = event:attrs{"senderId"}
-            mySequenceId = ent:state{[ent:originId, originId]}
+            temperature = event:attrs{"temperature"}
+            timestamp = event:attrs{"timestamp"}
         }
-        if originSequenceId == mySequenceId + 1 then noop()
+        if subjectSequenceId == (myCurrentSequenceId + 1) then noop()
         fired {
-            ent:state{[ent:originId, originId]} := originSequenceId
-        }
-        finally {
-            ent:state{[senderId, originId]} := originSequenceId
-            ent:temperatureLogs{[originId, messageId]} := {
-                "messageId": messageId,
-                "sensorId": originId,
-                "temperature": temperature,
-                "timestamp": timestamp
-            }
+            ent:temperatureLogs{[subjectSensorId, messageId, "messageId"]} := messageId
+            ent:temperatureLogs{[subjectSensorId, messageId, "temperature"]} := temperature
+            ent:temperatureLogs{[subjectSensorId, messageId, "timestamp"]} := timestamp
+
+            ent:state{[senderId, subjectSensorId]} := subjectSequenceId
+            ent:state{[originId(), subjectSensorId]} := subjectSequenceId
+        } else {
+            ent:temperatureLogs{[subjectSensorId, messageId, "messageId"]} := messageId
+            ent:temperatureLogs{[subjectSensorId, messageId, "temperature"]} := temperature
+            ent:temperatureLogs{[subjectSensorId, messageId, "timestamp"]} := timestamp
+
+            ent:state{[senderId, subjectSensorId]} := subjectSequenceId
         }
     }
 
     rule recieve_seen {
         select when gossip seen
-        foreach event:attrs{"state"} setting(sequenceId, stateSensorId)
+            where ent:processing
+        foreach ent:state{originId()} setting(mySubjectSequenceId, subjectSensorId)
         pre {
             senderId = event:attrs{"senderId"}
-            sensorId = event:attrs{"sensorId"}
-            mySequenceId = ent:state{[sensorId, stateSensorId]}
-            messageId = stateSensorId + ":" + mySequenceId
+            senderState = event:attrs{"state"}
+            senderCurrentSequenceId = senderState{subjectSensorId} == null => -1 | senderState{subjectSensorId}
+            nextNeededSequenceId = senderCurrentSequenceId + 1
+            messageIdToSend = subjectSensorId + ":" + nextNeededSequenceId
+            temperatureLog = temperatureLogs(){[subjectSensorId, messageIdToSend]}
         }
-        if mySequenceId == sequenceId + 1 then
+        if mySubjectSequenceId >= nextNeededSequenceId then 
             event:send({
-                "eci": ent:subscriberMap{senderId}, 
-                "domain": "gossip", 
+                "eci": ent:subscriberMap{senderId},
+                "domain": "gossip",
                 "type": "rumor",
                 "attrs": {
-                    "messageId": messageId,
                     "senderId": originId(),
-                    "temperature": temperatureLogs(){[stateSensorId, messageId, "temperature"]},
-                    "timestamp": temperatureLogs(){[stateSensorId, messageId, "timestamp"]}
+                    "messageId": messageIdToSend,
+                    "temperature": temperatureLog{"temperature"},
+                    "timestamp": temperatureLog{"timestamp"},
                 }
             })
         fired {
+            //update state at senderid to the information sent
+            ent:state{[senderId, subjectSensorId]} := nextNeededSequenceId
         } else {
-            ent:state{[sensorId, stateSensorId]} := sequenceId
+            //update state at senderid to the information recieved
+            ent:state{[senderId, subjectSensorId]} := senderCurrentSequenceId
         }
     }
 
@@ -265,11 +299,9 @@ ruleset gossip {
             sensorEci = event:attrs{"sensorEci"}
             sensorId = event:attrs{"sensorId"}
         }
-        if not ent:subscriberMap{sensorEci} then noop()
-        fired {
+        always {
             ent:subscriberMap{sensorEci} := sensorId
             ent:subscriberMap{sensorId} := sensorEci
-            raise gossip event "init_subscription_exchange"
         }
     }
 }
